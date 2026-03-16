@@ -4,24 +4,13 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>KasirKu App</title>
-  
-  <!-- React & ReactDOM -->
   <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-  
-  <!-- Babel untuk membaca JSX di browser -->
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-  
-  <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
-  
-  <!-- Phosphor Icons (Pengganti Lucide untuk versi 1 File) -->
   <script src="https://unpkg.com/@phosphor-icons/web"></script>
-
   <style>
-    /* CSS tambahan untuk memastikan tampilan rapi di HP */
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background-color: #f8fafc; }
-    /* Sembunyikan scrollbar tapi tetap bisa di-scroll */
     .no-scrollbar::-webkit-scrollbar { display: none; }
     .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
   </style>
@@ -32,130 +21,72 @@
   <script type="text/babel">
     const { useState, useEffect, useMemo } = React;
 
-    // --- UTILITIES ---
-    const formatRp = (angka) => {
-      return new Intl.NumberFormat('id-ID', {
-        style: 'currency',
-        currency: 'IDR',
-        minimumFractionDigits: 0
-      }).format(angka || 0);
-    };
+    const formatRp = (angka) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(angka || 0);
+    const formatDate = (dateString) => new Date(dateString).toLocaleDateString('id-ID', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute:'2-digit' });
 
-    const formatDate = (dateString, includeTime = false) => {
-      const options = { year: 'numeric', month: 'short', day: 'numeric' };
-      if (includeTime) {
-        options.hour = '2-digit';
-        options.minute = '2-digit';
-      }
-      return new Date(dateString).toLocaleDateString('id-ID', options);
-    };
-
-    // --- MAIN APP COMPONENT ---
     function App() {
-      // --- STATE MANAGEMENT ---
       const [activeTab, setActiveTab] = useState('beranda');
       const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
       
-      const [products, setProducts] = useState(() => JSON.parse(localStorage.getItem('kasir_products')) || [
-        { id: '1', name: 'Kopi Susu', sku: 'KPS-01', buyPrice: 10000, sellPrice: 15000, stock: 50 },
-        { id: '2', name: 'Teh Manis', sku: 'THM-01', buyPrice: 3000, sellPrice: 5000, stock: 100 },
-      ]);
-      
+      const [products, setProducts] = useState(() => JSON.parse(localStorage.getItem('kasir_products')) || []);
       const [transactions, setTransactions] = useState(() => JSON.parse(localStorage.getItem('kasir_transactions')) || [
         { id: 't1', date: new Date().toISOString(), type: 'MODAL', amount: 5000000, description: 'Modal Awal', items: [] }
-      ]);
-      
-      const [inventory, setInventory] = useState(() => JSON.parse(localStorage.getItem('kasir_inventory')) || [
-        { id: 'i1', name: 'Mesin Kasir', value: 3000000, qty: 1, condition: 'Baik' }
       ]);
 
       useEffect(() => { localStorage.setItem('kasir_products', JSON.stringify(products)); }, [products]);
       useEffect(() => { localStorage.setItem('kasir_transactions', JSON.stringify(transactions)); }, [transactions]);
-      useEffect(() => { localStorage.setItem('kasir_inventory', JSON.stringify(inventory)); }, [inventory]);
 
-      // --- DERIVED STATE ---
       const finances = useMemo(() => {
-        let modal = 0, pengeluaran = 0, pendapatan = 0, restockValue = 0, hpp = 0;
+        let modal = 0, pengeluaran = 0, pendapatan = 0, hpp = 0;
         transactions.forEach(t => {
           if (t.type === 'MODAL') modal += t.amount;
           if (t.type === 'EXPENSE') pengeluaran += t.amount;
-          if (t.type === 'RESTOCK') restockValue += t.amount; 
           if (t.type === 'SALE') {
             pendapatan += t.amount;
-            if (t.items) {
-              t.items.forEach(item => { hpp += (item.buyPrice || 0) * item.qty; });
-            }
+            if (t.items) t.items.forEach(item => { hpp += (item.buyPrice || 0) * item.qty; });
           }
         });
-        const saldo = modal + pendapatan - pengeluaran;
-        const labaKotor = pendapatan - hpp;
-        const labaBersih = labaKotor - pengeluaran;
-        return { modal, pengeluaran, pendapatan, restockValue, saldo, hpp, labaKotor, labaBersih };
+        return { saldo: modal + pendapatan - pengeluaran, labaBersih: (pendapatan - hpp) - pengeluaran, pendapatan, pengeluaran, hpp };
       }, [transactions]);
 
-      // --- ACTIONS ---
       const addTransaction = (type, amount, description, items = []) => {
-        const newTx = { id: Date.now().toString(), date: new Date().toISOString(), type, amount, description, items };
-        setTransactions([newTx, ...transactions]);
+        setTransactions([{ id: Date.now().toString(), date: new Date().toISOString(), type, amount, description, items }, ...transactions]);
+      };
+
+      // FUNGSI BARU: Hapus Transaksi
+      const deleteTransaction = (id) => {
+        if(window.confirm('Hapus histori ini? Saldo dan Laporan akan otomatis menyesuaikan.')) {
+          setTransactions(transactions.filter(t => t.id !== id));
+        }
       };
 
       const updateProductStock = (productId, qtyChange) => {
         setProducts(products.map(p => p.id === productId ? { ...p, stock: p.stock + qtyChange } : p));
       };
 
-      // --- VIEWS ---
       const DashboardView = () => (
-        <div className="space-y-4 md:space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-4">
-            <div className="bg-blue-600 text-white p-5 md:p-6 rounded-xl shadow flex flex-col justify-between relative overflow-hidden">
+        <div className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div className="bg-blue-600 text-white p-5 rounded-xl shadow relative overflow-hidden">
               <i className="ph-fill ph-wallet absolute top-[-10px] right-[-10px] text-[80px] opacity-10"></i>
-              <div className="flex justify-between items-start mb-2 relative z-10">
-                <p className="text-blue-100 text-sm font-medium">Saldo Laci Kasir</p>
-                <i className="ph-bold ph-wallet text-[24px] text-blue-200"></i>
-              </div>
-              <h3 className="text-2xl md:text-3xl font-bold relative z-10">{formatRp(finances.saldo)}</h3>
+              <p className="text-blue-100 text-sm font-medium mb-2 relative z-10">Saldo Laci Kasir</p>
+              <h3 className="text-3xl font-bold relative z-10">{formatRp(finances.saldo)}</h3>
             </div>
-
-            <div className="bg-emerald-500 text-white p-5 md:p-6 rounded-xl shadow flex flex-col justify-between relative overflow-hidden">
+            <div className="bg-emerald-500 text-white p-5 rounded-xl shadow relative overflow-hidden">
               <i className="ph-fill ph-trend-up absolute top-[-10px] right-[-10px] text-[80px] opacity-10"></i>
-              <div className="flex justify-between items-start mb-2 relative z-10">
-                <p className="text-emerald-100 text-sm font-medium">Laba Bersih</p>
-                <i className="ph-bold ph-trend-up text-[24px] text-emerald-200"></i>
-              </div>
-              <h3 className="text-2xl md:text-3xl font-bold relative z-10">{formatRp(finances.labaBersih)}</h3>
+              <p className="text-emerald-100 text-sm font-medium mb-2 relative z-10">Laba Bersih</p>
+              <h3 className="text-3xl font-bold relative z-10">{formatRp(finances.labaBersih)}</h3>
             </div>
-
-            <div className="bg-green-500 text-white p-5 md:p-6 rounded-xl shadow flex flex-col justify-between">
-              <div className="flex justify-between items-start mb-2">
-                <p className="text-green-100 text-sm font-medium">Omset Penjualan</p>
-                <i className="ph-bold ph-currency-dollar text-[24px] text-green-200"></i>
-              </div>
-              <h3 className="text-xl md:text-2xl font-bold">{formatRp(finances.pendapatan)}</h3>
-            </div>
-            
-            <div className="bg-red-500 text-white p-5 md:p-6 rounded-xl shadow flex flex-col justify-between">
-              <div className="flex justify-between items-start mb-2">
-                <p className="text-red-100 text-sm font-medium">Pengeluaran & Beban</p>
-                <i className="ph-bold ph-arrow-circle-down text-[24px] text-red-200"></i>
-              </div>
-              <h3 className="text-xl md:text-2xl font-bold">{formatRp(finances.pengeluaran)}</h3>
-            </div>
+            <div className="bg-green-500 text-white p-5 rounded-xl shadow"><p className="text-green-100 text-sm font-medium mb-1">Omset Penjualan</p><h3 className="text-2xl font-bold">{formatRp(finances.pendapatan)}</h3></div>
+            <div className="bg-red-500 text-white p-5 rounded-xl shadow"><p className="text-red-100 text-sm font-medium mb-1">Pengeluaran</p><h3 className="text-2xl font-bold">{formatRp(finances.pengeluaran)}</h3></div>
           </div>
-
-          <div className="bg-white p-4 md:p-6 rounded-xl shadow mt-4">
-            <h3 className="text-base md:text-lg font-bold text-gray-800 mb-3 border-b pb-2 flex items-center gap-2">
-              <i className="ph-fill ph-package text-orange-500 text-[20px]"></i> Peringatan Stok
-            </h3>
+          <div className="bg-white p-4 rounded-xl shadow mt-4">
+            <h3 className="font-bold text-gray-800 mb-3 border-b pb-2 flex items-center gap-2"><i className="ph-fill ph-package text-orange-500 text-[20px]"></i> Peringatan Stok</h3>
             <div className="space-y-2">
               {products.filter(p => p.stock < 10).map(p => (
-                <div key={p.id} className="flex flex-col sm:flex-row justify-between sm:items-center p-3 bg-red-50 rounded-lg text-red-700 border border-red-100 gap-2">
-                  <span className="font-medium text-sm">{p.name} (SKU: {p.sku})</span>
-                  <span className="font-bold bg-red-200 px-3 py-1 rounded-full text-xs self-start sm:self-auto">Sisa: {p.stock}</span>
-                </div>
+                <div key={p.id} className="flex justify-between items-center p-3 bg-red-50 rounded-lg text-red-700 border border-red-100"><span className="font-medium text-sm">{p.name}</span><span className="font-bold bg-red-200 px-3 py-1 rounded-full text-xs">Sisa: {p.stock}</span></div>
               ))}
-              {products.filter(p => p.stock < 10).length === 0 && (
-                <p className="text-gray-500 italic p-3 bg-gray-50 rounded-lg text-center text-sm border border-dashed">Semua stok aman.</p>
-              )}
+              {products.filter(p => p.stock < 10).length === 0 && <p className="text-gray-500 italic p-3 bg-gray-50 rounded-lg text-center text-sm border border-dashed">Semua stok aman.</p>}
             </div>
           </div>
         </div>
@@ -166,84 +97,43 @@
         const addToCart = (product) => {
           if (product.stock <= 0) return;
           const existing = cart.find(item => item.product.id === product.id);
-          if (existing) {
-            if (existing.qty >= product.stock) return;
-            setCart(cart.map(item => item.product.id === product.id ? { ...item, qty: item.qty + 1 } : item));
-          } else setCart([...cart, { product, qty: 1 }]);
+          if (existing) { if (existing.qty >= product.stock) return; setCart(cart.map(item => item.product.id === product.id ? { ...item, qty: item.qty + 1 } : item)); } 
+          else setCart([...cart, { product, qty: 1 }]);
         };
-        const updateCartQty = (productId, delta) => {
-          setCart(cart.map(item => {
-            if (item.product.id === productId) {
-              const newQty = item.qty + delta;
-              if (newQty > 0 && newQty <= item.product.stock) return { ...item, qty: newQty };
-            }
-            return item;
-          }).filter(item => item.qty > 0));
-        };
-
+        const updateCartQty = (productId, delta) => setCart(cart.map(item => item.product.id === productId ? { ...item, qty: item.qty + delta } : item).filter(item => item.qty > 0));
         const total = cart.reduce((sum, item) => sum + (item.product.sellPrice * item.qty), 0);
         const handleCheckout = () => {
           if (cart.length === 0) return;
-          const txItems = cart.map(c => ({ id: c.product.id, name: c.product.name, qty: c.qty, price: c.product.sellPrice, buyPrice: c.product.buyPrice }));
-          addTransaction('SALE', total, 'Penjualan', txItems);
+          addTransaction('SALE', total, 'Penjualan', cart.map(c => ({ id: c.product.id, name: c.product.name, qty: c.qty, price: c.product.sellPrice, buyPrice: c.product.buyPrice })));
           cart.forEach(item => updateProductStock(item.product.id, -item.qty));
-          setCart([]);
-          alert('Pembayaran Berhasil Diterima!');
+          setCart([]); alert('Pembayaran Berhasil!');
         };
-
         return (
           <div className="flex flex-col lg:flex-row gap-4 h-full">
-            <div className="flex-1 bg-white p-4 md:p-6 rounded-xl shadow overflow-y-auto">
+            <div className="flex-1 bg-white p-4 rounded-xl shadow overflow-y-auto">
               <h2 className="text-lg font-bold text-gray-800 mb-3 flex items-center gap-2"><i className="ph-fill ph-shopping-cart text-blue-500 text-[24px]"></i> Produk</h2>
               <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                 {products.map(p => (
-                  <button key={p.id} onClick={() => addToCart(p)} disabled={p.stock <= 0}
-                    className={`p-3 md:p-4 rounded-xl border text-left flex flex-col justify-between h-full transition-all ${p.stock > 0 ? 'hover:border-blue-500 active:bg-blue-50 bg-white shadow-sm' : 'bg-gray-100 opacity-60'}`}>
-                    <div>
-                      <h3 className="font-bold text-gray-800 text-sm md:text-base leading-tight">{p.name}</h3>
-                      <p className="text-blue-600 font-semibold text-sm mt-1">{formatRp(p.sellPrice)}</p>
-                    </div>
-                    <div className="mt-3 flex justify-between items-center w-full">
-                      <span className={`text-[10px] md:text-xs font-bold px-2 py-1 rounded w-full text-center ${p.stock <= 5 ? 'bg-red-100 text-red-600' : 'bg-green-100 text-green-600'}`}>Sisa: {p.stock}</span>
-                    </div>
+                  <button key={p.id} onClick={() => addToCart(p)} disabled={p.stock <= 0} className={`p-3 rounded-xl border text-left flex flex-col justify-between h-full ${p.stock > 0 ? 'hover:border-blue-500 active:bg-blue-50 bg-white shadow-sm' : 'bg-gray-100 opacity-60'}`}>
+                    <div><h3 className="font-bold text-gray-800 text-sm">{p.name}</h3><p className="text-blue-600 font-semibold text-sm mt-1">{formatRp(p.sellPrice)}</p></div>
+                    <div className="mt-3 w-full"><span className={`text-[10px] font-bold px-2 py-1 rounded w-full block text-center ${p.stock <= 5 ? 'bg-red-100 text-red-600' : 'bg-green-100 text-green-600'}`}>Sisa: {p.stock}</span></div>
                   </button>
                 ))}
               </div>
             </div>
-
-            <div className="w-full lg:w-96 bg-white p-4 md:p-6 rounded-xl shadow flex flex-col min-h-[50vh]">
+            <div className="w-full bg-white p-4 rounded-xl shadow flex flex-col min-h-[50vh]">
               <h2 className="text-lg font-bold text-gray-800 mb-3 border-b pb-2">Keranjang</h2>
               <div className="flex-1 overflow-y-auto space-y-2 mb-4">
-                {cart.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center h-full text-gray-400 py-10">
-                    <i className="ph-bold ph-shopping-cart text-[48px] mb-2 opacity-50"></i>
-                    <p className="text-sm">Belum ada pesanan</p>
+                {cart.length === 0 ? <div className="text-center text-gray-400 py-10"><p className="text-sm">Belum ada pesanan</p></div> : cart.map(item => (
+                  <div key={item.product.id} className="flex justify-between items-center bg-gray-50 p-2 rounded-lg border">
+                    <div className="flex-1 pr-2"><h4 className="font-semibold text-gray-800 text-sm truncate">{item.product.name}</h4><p className="text-xs text-blue-600">{formatRp(item.product.sellPrice)}</p></div>
+                    <div className="flex items-center space-x-1 bg-white border rounded p-1 shrink-0"><button onClick={() => updateCartQty(item.product.id, -1)} className="p-1 text-red-500 active:bg-gray-200 rounded"><i className="ph-bold ph-minus text-[14px]"></i></button><span className="font-bold w-4 text-center text-sm">{item.qty}</span><button onClick={() => updateCartQty(item.product.id, 1)} className="p-1 text-blue-500 active:bg-gray-200 rounded"><i className="ph-bold ph-plus text-[14px]"></i></button></div>
                   </div>
-                ) : (
-                  cart.map(item => (
-                    <div key={item.product.id} className="flex justify-between items-center bg-gray-50 p-2 rounded-lg border">
-                      <div className="flex-1 overflow-hidden pr-2">
-                        <h4 className="font-semibold text-gray-800 text-sm truncate">{item.product.name}</h4>
-                        <p className="text-xs text-blue-600 font-medium">{formatRp(item.product.sellPrice)}</p>
-                      </div>
-                      <div className="flex items-center space-x-1 md:space-x-2 bg-white border rounded p-1 shrink-0">
-                        <button onClick={() => updateCartQty(item.product.id, -1)} className="p-1 text-red-500 active:bg-gray-200 rounded"><i className="ph-bold ph-minus text-[14px]"></i></button>
-                        <span className="font-bold w-4 text-center text-sm">{item.qty}</span>
-                        <button onClick={() => updateCartQty(item.product.id, 1)} className="p-1 text-blue-500 active:bg-gray-200 rounded"><i className="ph-bold ph-plus text-[14px]"></i></button>
-                      </div>
-                    </div>
-                  ))
-                )}
+                ))}
               </div>
               <div className="pt-3 border-t bg-white mt-auto">
-                <div className="flex justify-between items-center mb-3">
-                  <span className="text-base md:text-lg font-bold text-gray-600">Total</span>
-                  <span className="text-xl md:text-2xl font-bold text-blue-600">{formatRp(total)}</span>
-                </div>
-                <button onClick={handleCheckout} disabled={cart.length === 0}
-                  className="w-full bg-blue-600 active:bg-blue-700 disabled:bg-gray-300 disabled:text-gray-500 text-white font-bold py-3 md:py-4 rounded-xl transition-colors shadow-lg flex justify-center items-center gap-2 text-sm md:text-base">
-                  <i className="ph-bold ph-currency-dollar text-[20px]"></i> Bayar Sekarang
-                </button>
+                <div className="flex justify-between items-center mb-3"><span className="font-bold text-gray-600">Total</span><span className="text-xl font-bold text-blue-600">{formatRp(total)}</span></div>
+                <button onClick={handleCheckout} disabled={cart.length === 0} className="w-full bg-blue-600 active:bg-blue-700 disabled:bg-gray-300 text-white font-bold py-3 rounded-xl flex justify-center items-center gap-2"><i className="ph-bold ph-currency-dollar text-[20px]"></i> Bayar Sekarang</button>
               </div>
             </div>
           </div>
@@ -253,25 +143,12 @@
       const ProductView = () => {
         const [isAdding, setIsAdding] = useState(false);
         const [form, setForm] = useState({ name: '', sku: '', buyPrice: '', sellPrice: '', stock: '' });
-
-        const handleAdd = (e) => {
-          e.preventDefault();
-          setProducts([...products, { id: Date.now().toString(), name: form.name, sku: form.sku, buyPrice: Number(form.buyPrice), sellPrice: Number(form.sellPrice), stock: Number(form.stock) }]);
-          setIsAdding(false); setForm({ name: '', sku: '', buyPrice: '', sellPrice: '', stock: '' });
-        };
-        const handleDelete = (id) => { if(window.confirm('Hapus produk?')) setProducts(products.filter(p => p.id !== id)); };
-
+        const handleAdd = (e) => { e.preventDefault(); setProducts([...products, { id: Date.now().toString(), name: form.name, sku: form.sku, buyPrice: Number(form.buyPrice), sellPrice: Number(form.sellPrice), stock: Number(form.stock) }]); setIsAdding(false); setForm({ name: '', sku: '', buyPrice: '', sellPrice: '', stock: '' }); };
         return (
-          <div className="bg-white p-4 md:p-6 rounded-xl shadow">
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-3">
-              <h2 className="text-lg md:text-2xl font-bold text-gray-800 flex items-center gap-2"><i className="ph-fill ph-package text-blue-500"></i> Produk</h2>
-              <button onClick={() => setIsAdding(!isAdding)} className="bg-blue-600 text-white px-3 py-2 rounded-lg flex items-center gap-2 text-sm md:text-base font-medium active:bg-blue-700 w-full sm:w-auto justify-center">
-                {isAdding ? 'Batal' : <><i className="ph-bold ph-plus"></i> Tambah</>}
-              </button>
-            </div>
-
+          <div className="bg-white p-4 rounded-xl shadow">
+            <div className="flex justify-between items-center mb-4"><h2 className="text-lg font-bold text-gray-800 flex items-center gap-2"><i className="ph-fill ph-package text-blue-500"></i> Produk</h2><button onClick={() => setIsAdding(!isAdding)} className="bg-blue-600 text-white px-3 py-2 rounded-lg flex items-center gap-2 text-sm font-medium active:bg-blue-700">{isAdding ? 'Batal' : <><i className="ph-bold ph-plus"></i> Tambah</>}</button></div>
             {isAdding && (
-              <form onSubmit={handleAdd} className="bg-blue-50 p-4 rounded-xl mb-6 grid grid-cols-1 sm:grid-cols-2 gap-3 border border-blue-100">
+              <form onSubmit={handleAdd} className="bg-blue-50 p-4 rounded-xl mb-4 grid grid-cols-1 sm:grid-cols-2 gap-3 border border-blue-100">
                 <div><label className="text-xs font-semibold text-gray-700">Nama</label><input required className="w-full p-2 border rounded-lg mt-1 text-sm" value={form.name} onChange={e=>setForm({...form, name: e.target.value})} /></div>
                 <div><label className="text-xs font-semibold text-gray-700">Kode/SKU</label><input required className="w-full p-2 border rounded-lg mt-1 text-sm" value={form.sku} onChange={e=>setForm({...form, sku: e.target.value})} /></div>
                 <div><label className="text-xs font-semibold text-gray-700">Harga Modal</label><input required type="number" className="w-full p-2 border rounded-lg mt-1 text-sm" value={form.buyPrice} onChange={e=>setForm({...form, buyPrice: e.target.value})} /></div>
@@ -280,30 +157,12 @@
                 <button type="submit" className="bg-green-600 text-white px-4 py-2 rounded-lg sm:col-span-2 mt-2 font-bold text-sm active:bg-green-700">Simpan</button>
               </form>
             )}
-
             <div className="overflow-x-auto rounded-lg border">
-              <table className="w-full text-left border-collapse min-w-[600px]">
-                <thead>
-                  <tr className="bg-gray-50 border-b">
-                    <th className="p-3 text-sm font-semibold text-gray-600">Nama</th>
-                    <th className="p-3 text-sm font-semibold text-gray-600">Modal</th>
-                    <th className="p-3 text-sm font-semibold text-gray-600">Jual</th>
-                    <th className="p-3 text-sm font-semibold text-gray-600 text-center">Stok</th>
-                    <th className="p-3 text-sm font-semibold text-gray-600 text-center">Aksi</th>
-                  </tr>
-                </thead>
+              <table className="w-full text-left min-w-[500px]">
+                <thead><tr className="bg-gray-50 border-b"><th className="p-3 text-xs font-semibold text-gray-600">Nama</th><th className="p-3 text-xs font-semibold text-gray-600">Modal</th><th className="p-3 text-xs font-semibold text-gray-600">Jual</th><th className="p-3 text-xs font-semibold text-gray-600 text-center">Stok</th><th className="p-3 text-xs font-semibold text-gray-600 text-center">Aksi</th></tr></thead>
                 <tbody>
                   {products.map(p => (
-                    <tr key={p.id} className="border-b active:bg-gray-50">
-                      <td className="p-3">
-                        <p className="font-bold text-gray-800 text-sm">{p.name}</p>
-                        <p className="text-xs text-gray-400">{p.sku}</p>
-                      </td>
-                      <td className="p-3 text-orange-600 text-sm">{formatRp(p.buyPrice)}</td>
-                      <td className="p-3 text-green-600 font-bold text-sm">{formatRp(p.sellPrice)}</td>
-                      <td className="p-3 text-center"><span className={`px-2 py-1 rounded-full text-xs font-bold ${p.stock <= 5 ? 'bg-red-100 text-red-600' : 'bg-gray-100 text-gray-700'}`}>{p.stock}</span></td>
-                      <td className="p-3 text-center"><button onClick={() => handleDelete(p.id)} className="text-red-500 p-2"><i className="ph-bold ph-trash text-[18px]"></i></button></td>
-                    </tr>
+                    <tr key={p.id} className="border-b active:bg-gray-50"><td className="p-3"><p className="font-bold text-gray-800 text-sm">{p.name}</p><p className="text-xs text-gray-400">{p.sku}</p></td><td className="p-3 text-orange-600 text-sm">{formatRp(p.buyPrice)}</td><td className="p-3 text-green-600 font-bold text-sm">{formatRp(p.sellPrice)}</td><td className="p-3 text-center"><span className={`px-2 py-1 rounded-full text-xs font-bold ${p.stock <= 5 ? 'bg-red-100 text-red-600' : 'bg-gray-100 text-gray-700'}`}>{p.stock}</span></td><td className="p-3 text-center"><button onClick={() => {if(window.confirm('Hapus produk?')) setProducts(products.filter(item => item.id !== p.id))}} className="text-red-500 p-2"><i className="ph-bold ph-trash text-[18px]"></i></button></td></tr>
                   ))}
                 </tbody>
               </table>
@@ -313,36 +172,18 @@
       };
 
       const PurchaseView = () => {
-        const [selectedProduct, setSelectedProduct] = useState('');
-        const [qty, setQty] = useState('');
-
+        const [selectedProduct, setSelectedProduct] = useState(''); const [qty, setQty] = useState('');
         const handlePurchase = (e) => {
-          e.preventDefault();
-          const product = products.find(p => p.id === selectedProduct);
-          if (!product) return;
-          const q = Number(qty);
-          addTransaction('RESTOCK', product.buyPrice * q, `Tambah Stok: ${product.name}`, [{ id: product.id, name: product.name, qty: q }]);
-          updateProductStock(product.id, q);
-          setSelectedProduct(''); setQty('');
-          alert("Stok berhasil ditambah! (Tidak memotong uang laci)");
+          e.preventDefault(); const product = products.find(p => p.id === selectedProduct); if (!product) return;
+          const q = Number(qty); addTransaction('RESTOCK', product.buyPrice * q, `Tambah Stok: ${product.name}`, [{ id: product.id, name: product.name, qty: q }]);
+          updateProductStock(product.id, q); setSelectedProduct(''); setQty(''); alert("Stok berhasil ditambah!");
         };
-
         return (
-          <div className="max-w-xl mx-auto bg-white p-4 md:p-6 rounded-xl shadow">
-            <h2 className="text-lg md:text-2xl font-bold text-gray-800 mb-2 flex items-center gap-2"><i className="ph-fill ph-arrow-circle-up text-purple-500"></i> Tambah Stok</h2>
-            <p className="text-xs md:text-sm text-gray-500 mb-4 bg-purple-50 p-3 rounded-lg border border-purple-100">Penambahan stok di sini <b>tidak akan memotong Saldo Laci</b>.</p>
-            <form onSubmit={handlePurchase} className="space-y-4">
-              <div>
-                <label className="block text-sm font-bold mb-1">Pilih Produk</label>
-                <select required className="w-full p-3 border rounded-xl bg-gray-50 text-sm" value={selectedProduct} onChange={(e) => setSelectedProduct(e.target.value)}>
-                  <option value="">-- Pilih --</option>
-                  {products.map(p => <option key={p.id} value={p.id}>{p.name} (Sisa: {p.stock})</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-bold mb-1">Jumlah Masuk (Qty)</label>
-                <input required type="number" min="1" className="w-full p-3 border rounded-xl bg-gray-50 text-sm" value={qty} onChange={(e) => setQty(e.target.value)} placeholder="0" />
-              </div>
+          <div className="bg-white p-4 rounded-xl shadow">
+            <h2 className="text-lg font-bold text-gray-800 mb-2 flex items-center gap-2"><i className="ph-fill ph-arrow-circle-up text-purple-500"></i> Tambah Stok</h2>
+            <form onSubmit={handlePurchase} className="space-y-4 mt-4">
+              <div><label className="block text-sm font-bold mb-1">Pilih Produk</label><select required className="w-full p-3 border rounded-xl bg-gray-50 text-sm" value={selectedProduct} onChange={(e) => setSelectedProduct(e.target.value)}><option value="">-- Pilih --</option>{products.map(p => <option key={p.id} value={p.id}>{p.name} (Sisa: {p.stock})</option>)}</select></div>
+              <div><label className="block text-sm font-bold mb-1">Jumlah Masuk (Qty)</label><input required type="number" min="1" className="w-full p-3 border rounded-xl bg-gray-50 text-sm" value={qty} onChange={(e) => setQty(e.target.value)} placeholder="0" /></div>
               <button type="submit" className="w-full bg-purple-600 text-white font-bold py-3 rounded-xl active:bg-purple-700 flex justify-center items-center gap-2 text-sm"><i className="ph-bold ph-plus"></i> Tambahkan</button>
             </form>
           </div>
@@ -350,36 +191,19 @@
       };
 
       const FinanceView = () => {
-        const [type, setType] = useState('EXPENSE');
-        const [amount, setAmount] = useState('');
-        const [desc, setDesc] = useState('');
-
+        const [type, setType] = useState('EXPENSE'); const [amount, setAmount] = useState(''); const [desc, setDesc] = useState('');
         const handleSubmit = (e) => {
-          e.preventDefault();
-          const val = Number(amount);
-          if (type === 'EXPENSE' && finances.saldo < val) { alert("Saldo laci tidak cukup!"); return; }
-          addTransaction(type, val, desc);
-          setAmount(''); setDesc('');
-          alert('Berhasil dicatat!');
+          e.preventDefault(); const val = Number(amount); if (type === 'EXPENSE' && finances.saldo < val) { alert("Saldo laci tidak cukup!"); return; }
+          addTransaction(type, val, desc); setAmount(''); setDesc(''); alert('Berhasil dicatat!');
         };
-
         return (
-          <div className="max-w-xl mx-auto bg-white p-4 md:p-6 rounded-xl shadow">
-            <h2 className="text-lg md:text-2xl font-bold text-gray-800 mb-4 flex items-center gap-2"><i className="ph-fill ph-wallet text-red-500"></i> Kas & Beban</h2>
-            <div className="flex gap-2 mb-4 bg-gray-50 p-1 rounded-xl border">
-              <button onClick={() => setType('EXPENSE')} className={`flex-1 py-2 text-sm rounded-lg font-bold ${type === 'EXPENSE' ? 'bg-white shadow text-red-600' : 'text-gray-500'}`}>Pengeluaran</button>
-              <button onClick={() => setType('MODAL')} className={`flex-1 py-2 text-sm rounded-lg font-bold ${type === 'MODAL' ? 'bg-white shadow text-blue-600' : 'text-gray-500'}`}>Suntik Modal</button>
-            </div>
+          <div className="bg-white p-4 rounded-xl shadow">
+            <h2 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2"><i className="ph-fill ph-wallet text-red-500"></i> Kas & Beban</h2>
+            <div className="flex gap-2 mb-4 bg-gray-50 p-1 rounded-xl border"><button onClick={() => setType('EXPENSE')} className={`flex-1 py-2 text-sm rounded-lg font-bold ${type === 'EXPENSE' ? 'bg-white shadow text-red-600' : 'text-gray-500'}`}>Pengeluaran</button><button onClick={() => setType('MODAL')} className={`flex-1 py-2 text-sm rounded-lg font-bold ${type === 'MODAL' ? 'bg-white shadow text-blue-600' : 'text-gray-500'}`}>Suntik Modal</button></div>
             <form onSubmit={handleSubmit} className={`p-4 rounded-xl border ${type === 'EXPENSE' ? 'bg-red-50 border-red-100' : 'bg-blue-50 border-blue-100'}`}>
               <div className="space-y-3">
-                <div>
-                  <label className="block text-sm font-bold mb-1">Nominal (Rp)</label>
-                  <input required type="number" min="1" className="w-full p-3 border rounded-lg bg-white text-sm" value={amount} onChange={(e) => setAmount(e.target.value)} />
-                </div>
-                <div>
-                  <label className="block text-sm font-bold mb-1">Keterangan</label>
-                  <input required type="text" className="w-full p-3 border rounded-lg bg-white text-sm" value={desc} onChange={(e) => setDesc(e.target.value)} placeholder="Misal: Bayar Listrik" />
-                </div>
+                <div><label className="block text-sm font-bold mb-1">Nominal (Rp)</label><input required type="number" min="1" className="w-full p-3 border rounded-lg bg-white text-sm" value={amount} onChange={(e) => setAmount(e.target.value)} /></div>
+                <div><label className="block text-sm font-bold mb-1">Keterangan</label><input required type="text" className="w-full p-3 border rounded-lg bg-white text-sm" value={desc} onChange={(e) => setDesc(e.target.value)} placeholder="Misal: Bayar Listrik" /></div>
                 <button type="submit" className={`w-full text-white font-bold py-3 rounded-lg mt-2 text-sm ${type === 'MODAL' ? 'bg-blue-600' : 'bg-red-600'}`}>Simpan</button>
               </div>
             </form>
@@ -388,42 +212,22 @@
       };
 
       const ReportView = () => {
-        const filteredTransactions = transactions.filter(t => t.date.startsWith(new Date().toISOString().slice(0, 7))); // Bulan ini
-        const summary = filteredTransactions.reduce((acc, curr) => {
-          if (curr.type === 'SALE') { acc.income += curr.amount; if (curr.items) curr.items.forEach(i => acc.hpp += (i.buyPrice || 0) * i.qty); }
-          if (curr.type === 'EXPENSE') acc.expense += curr.amount;
-          return acc;
-        }, { income: 0, expense: 0, hpp: 0 });
-
         return (
-          <div className="bg-white p-4 md:p-6 rounded-xl shadow">
-            <h2 className="text-lg md:text-2xl font-bold text-gray-800 mb-4 flex items-center gap-2"><i className="ph-fill ph-file-text text-indigo-500"></i> Laba Rugi (Bulan Ini)</h2>
+          <div className="bg-white p-4 rounded-xl shadow">
+            <h2 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2"><i className="ph-fill ph-file-text text-indigo-500"></i> Laporan & Histori</h2>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-6">
-              <div className="border border-green-200 bg-green-50 p-3 rounded-xl">
-                <p className="text-green-700 text-xs font-semibold">1. Omset</p>
-                <p className="text-xl font-bold text-green-800">{formatRp(summary.income)}</p>
-              </div>
-              <div className="border border-orange-200 bg-orange-50 p-3 rounded-xl">
-                <p className="text-orange-700 text-xs font-semibold">2. HPP (Modal Barang Laku)</p>
-                <p className="text-xl font-bold text-orange-800">-{formatRp(summary.hpp)}</p>
-              </div>
-              <div className="border border-red-200 bg-red-50 p-3 rounded-xl">
-                <p className="text-red-700 text-xs font-semibold">3. Beban/Pengeluaran</p>
-                <p className="text-xl font-bold text-red-800">-{formatRp(summary.expense)}</p>
-              </div>
-              <div className="border border-emerald-300 bg-emerald-100 p-3 rounded-xl">
-                <p className="text-emerald-800 text-xs font-bold">4. LABA BERSIH (1 - 2 - 3)</p>
-                <p className="text-2xl font-black text-emerald-700">{formatRp(summary.income - summary.hpp - summary.expense)}</p>
-              </div>
+              <div className="border border-green-200 bg-green-50 p-3 rounded-xl"><p className="text-green-700 text-xs font-semibold">1. Total Omset</p><p className="text-xl font-bold text-green-800">{formatRp(finances.pendapatan)}</p></div>
+              <div className="border border-red-200 bg-red-50 p-3 rounded-xl"><p className="text-red-700 text-xs font-semibold">2. Total Pengeluaran</p><p className="text-xl font-bold text-red-800">-{formatRp(finances.pengeluaran)}</p></div>
+              <div className="border border-emerald-300 bg-emerald-100 p-3 rounded-xl"><p className="text-emerald-800 text-xs font-bold">3. LABA BERSIH</p><p className="text-2xl font-black text-emerald-700">{formatRp(finances.labaBersih)}</p></div>
             </div>
-
-            <h3 className="font-bold text-gray-800 mb-2 text-sm border-b pb-1">Histori Terakhir</h3>
+            <h3 className="font-bold text-gray-800 mb-2 text-sm border-b pb-1">Histori Transaksi</h3>
             <div className="overflow-x-auto">
               <table className="w-full text-left min-w-[500px]">
-                <thead><tr className="bg-gray-100"><th className="p-2 text-xs">Waktu</th><th className="p-2 text-xs">Rincian</th><th className="p-2 text-xs text-right">Nominal</th></tr></thead>
+                <thead><tr className="bg-gray-100"><th className="p-2 text-xs">Waktu</th><th className="p-2 text-xs">Rincian</th><th className="p-2 text-xs text-right">Nominal</th><th className="p-2 text-xs text-center">Aksi</th></tr></thead>
                 <tbody>
-                  {filteredTransactions.slice(0, 20).map(t => (
-                    <tr key={t.id} className="border-b"><td className="p-2 text-xs text-gray-500">{formatDate(t.date)}</td><td className="p-2 text-xs font-bold">{t.description}</td><td className={`p-2 text-xs font-bold text-right ${t.type === 'SALE' || t.type === 'MODAL' ? 'text-green-600' : (t.type === 'RESTOCK' ? 'text-purple-600' : 'text-red-600')}`}>{t.type === 'SALE' || t.type === 'MODAL' ? '+' : '-'}{formatRp(t.amount)}</td></tr>
+                  {transactions.map(t => (
+                    <tr key={t.id} className="border-b"><td className="p-2 text-[10px] text-gray-500">{formatDate(t.date)}</td><td className="p-2 text-xs font-bold">{t.description} <span className="text-[9px] font-normal block text-gray-400">{t.type}</span></td><td className={`p-2 text-xs font-bold text-right ${t.type === 'SALE' || t.type === 'MODAL' ? 'text-green-600' : (t.type === 'RESTOCK' ? 'text-purple-600' : 'text-red-600')}`}>{t.type === 'SALE' || t.type === 'MODAL' ? '+' : '-'}{formatRp(t.amount)}</td>
+                    <td className="p-2 text-center"><button onClick={() => deleteTransaction(t.id)} className="text-red-500 bg-red-50 active:bg-red-200 p-1.5 rounded"><i className="ph-bold ph-trash text-[16px]"></i></button></td></tr>
                   ))}
                 </tbody>
               </table>
@@ -433,79 +237,37 @@
       };
 
       const NavItem = ({ id, icon, label }) => (
-        <button onClick={() => { setActiveTab(id); setIsMobileMenuOpen(false); }}
-          className={`w-full flex flex-col md:flex-row items-center md:justify-start gap-1 md:gap-3 p-2 md:px-4 md:py-3.5 md:rounded-xl md:mb-2 transition-all font-medium ${activeTab === id ? 'text-blue-600 md:bg-blue-600 md:text-white md:shadow-lg' : 'text-gray-500 hover:text-blue-700 md:hover:bg-blue-50'}`}>
-          <i className={`text-[20px] md:text-[22px] ${icon} ${activeTab === id ? 'ph-fill' : 'ph'}`}></i>
-          <span className="text-[10px] md:text-sm text-center leading-tight">{label}</span>
+        <button onClick={() => { setActiveTab(id); setIsMobileMenuOpen(false); }} className={`w-full flex flex-col items-center gap-1 p-2 transition-all font-medium ${activeTab === id ? 'text-blue-600' : 'text-gray-500 hover:text-blue-700'}`}>
+          <i className={`text-[20px] ${icon} ${activeTab === id ? 'ph-fill' : 'ph'}`}></i><span className="text-[10px] text-center leading-tight">{label}</span>
         </button>
       );
 
       return (
-        <div className="min-h-screen bg-slate-50 flex flex-col md:flex-row font-sans pb-[70px] md:pb-0">
-          
-          {/* Sidebar Desktop (Hidden on Mobile) */}
-          <div className="hidden md:flex w-64 bg-white shadow-xl flex-col z-10 border-r border-gray-100 fixed h-full">
-            <div className="p-6 border-b flex items-center gap-3 text-blue-600">
-              <div className="bg-blue-100 p-2 rounded-lg"><i className="ph-fill ph-shopping-cart text-[26px]"></i></div>
-              <h1 className="font-black text-2xl tracking-tight">KASIRKU</h1>
-            </div>
-            <div className="flex-1 p-4 overflow-y-auto no-scrollbar">
-              <NavItem id="beranda" icon="ph-house" label="Dashboard" />
-              <NavItem id="kasir" icon="ph-currency-dollar" label="Kasir (POS)" />
-              <NavItem id="produk" icon="ph-package" label="Produk & Stok" />
-              <NavItem id="pembelian" icon="ph-arrow-circle-up" label="Tambah Stok" />
-              <NavItem id="keuangan" icon="ph-wallet" label="Kas & Beban" />
-              <NavItem id="laporan" icon="ph-chart-pie" label="Laporan" />
-            </div>
+        <div className="min-h-screen bg-slate-50 flex flex-col font-sans pb-[70px]">
+          <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 flex justify-between px-2 pb-safe z-50 shadow-[0_-5px_15px_rgba(0,0,0,0.05)]">
+            <NavItem id="beranda" icon="ph-house" label="Home" /><NavItem id="kasir" icon="ph-currency-dollar" label="Kasir" />
+            <div className="relative -top-5"><button onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} className="bg-blue-600 text-white w-14 h-14 rounded-full flex items-center justify-center shadow-lg border-4 border-slate-50 active:scale-95 transition-transform"><i className={`ph-bold text-[24px] ${isMobileMenuOpen ? 'ph-x' : 'ph-squares-four'}`}></i></button></div>
+            <NavItem id="produk" icon="ph-package" label="Produk" /><NavItem id="laporan" icon="ph-chart-pie" label="Laporan" />
           </div>
 
-          {/* Bottom Nav Mobile */}
-          <div className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 flex justify-between px-2 pb-safe z-50 shadow-[0_-5px_15px_rgba(0,0,0,0.05)]">
-            <NavItem id="beranda" icon="ph-house" label="Home" />
-            <NavItem id="kasir" icon="ph-currency-dollar" label="Kasir" />
-            
-            {/* FAB Button untuk Menu Lainnya */}
-            <div className="relative -top-5">
-              <button onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} className="bg-blue-600 text-white w-14 h-14 rounded-full flex items-center justify-center shadow-lg border-4 border-slate-50 active:scale-95 transition-transform">
-                <i className={`ph-bold text-[24px] ${isMobileMenuOpen ? 'ph-x' : 'ph-squares-four'}`}></i>
-              </button>
-            </div>
-
-            <NavItem id="produk" icon="ph-package" label="Produk" />
-            <NavItem id="laporan" icon="ph-chart-pie" label="Laporan" />
-          </div>
-
-          {/* Mobile Overlay Menu */}
           {isMobileMenuOpen && (
-            <div className="md:hidden fixed inset-0 bg-black/50 z-40 backdrop-blur-sm flex items-end justify-center pb-24" onClick={() => setIsMobileMenuOpen(false)}>
+            <div className="fixed inset-0 bg-black/50 z-40 backdrop-blur-sm flex items-end justify-center pb-24" onClick={() => setIsMobileMenuOpen(false)}>
               <div className="bg-white w-11/12 rounded-2xl p-4 shadow-2xl flex flex-col gap-2" onClick={e => e.stopPropagation()}>
-                <p className="text-xs font-bold text-gray-400 mb-2 px-2 uppercase tracking-wider">Menu Tambahan</p>
-                <button onClick={() => {setActiveTab('pembelian'); setIsMobileMenuOpen(false);}} className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl active:bg-blue-50">
-                  <i className="ph-fill ph-arrow-circle-up text-[24px] text-purple-500"></i> <span className="font-bold text-gray-700">Penambahan Stok Masuk</span>
-                </button>
-                <button onClick={() => {setActiveTab('keuangan'); setIsMobileMenuOpen(false);}} className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl active:bg-blue-50">
-                  <i className="ph-fill ph-wallet text-[24px] text-red-500"></i> <span className="font-bold text-gray-700">Catat Beban / Tambah Kas</span>
-                </button>
+                <p className="text-xs font-bold text-gray-400 mb-2 px-2 uppercase">Menu Tambahan</p>
+                <button onClick={() => {setActiveTab('pembelian'); setIsMobileMenuOpen(false);}} className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl active:bg-blue-50"><i className="ph-fill ph-arrow-circle-up text-[24px] text-purple-500"></i> <span className="font-bold text-gray-700">Tambah Stok Masuk</span></button>
+                <button onClick={() => {setActiveTab('keuangan'); setIsMobileMenuOpen(false);}} className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl active:bg-blue-50"><i className="ph-fill ph-wallet text-[24px] text-red-500"></i> <span className="font-bold text-gray-700">Catat Kas & Beban</span></button>
               </div>
             </div>
           )}
 
-          {/* Main Content Area */}
-          <div className="flex-1 flex flex-col overflow-hidden md:ml-64 w-full h-[100dvh]">
-            <header className="bg-white shadow-sm px-4 md:px-6 py-3 flex justify-between items-center z-0 border-b border-gray-100 sticky top-0">
-              <h2 className="text-xl md:text-2xl font-black text-gray-800 capitalize tracking-tight flex items-center gap-2">
-                {activeTab === 'beranda' ? 'KASIRKU' : activeTab === 'pembelian' ? 'Tambah Stok' : activeTab.replace(/([A-Z])/g, ' $1').trim()}
-              </h2>
-              <div className="bg-blue-50 px-3 py-1.5 md:px-5 md:py-2.5 rounded-xl border border-blue-100 flex items-center gap-2">
-                <i className="ph-fill ph-wallet text-blue-500 hidden md:block text-[18px]"></i>
-                <div className="flex flex-col items-end md:items-start">
-                  <span className="text-[9px] md:text-[10px] text-blue-600 uppercase font-bold leading-none mb-0.5">Saldo Laci</span>
-                  <span className="text-sm md:text-base font-bold text-blue-800 leading-none">{formatRp(finances.saldo)}</span>
-                </div>
+          <div className="flex-1 flex flex-col overflow-hidden w-full h-[100dvh]">
+            <header className="bg-white shadow-sm px-4 py-3 flex justify-between items-center z-0 border-b border-gray-100 sticky top-0">
+              <h2 className="text-xl font-black text-gray-800 capitalize tracking-tight flex items-center gap-2">{activeTab === 'beranda' ? 'KASIRKU' : activeTab === 'pembelian' ? 'Tambah Stok' : activeTab.replace(/([A-Z])/g, ' $1').trim()}</h2>
+              <div className="bg-blue-50 px-3 py-1.5 rounded-xl border border-blue-100 flex items-center gap-2">
+                <div className="flex flex-col items-end"><span className="text-[9px] text-blue-600 uppercase font-bold leading-none mb-0.5">Saldo Laci</span><span className="text-sm font-bold text-blue-800 leading-none">{formatRp(finances.saldo)}</span></div>
               </div>
             </header>
-
-            <main className="flex-1 overflow-y-auto p-3 md:p-6 lg:p-8 no-scrollbar bg-slate-50">
+            <main className="flex-1 overflow-y-auto p-3 no-scrollbar bg-slate-50">
               {activeTab === 'beranda' && <DashboardView />}
               {activeTab === 'kasir' && <POSView />}
               {activeTab === 'produk' && <ProductView />}
@@ -514,14 +276,13 @@
               {activeTab === 'laporan' && <ReportView />}
             </main>
           </div>
-
         </div>
       );
     }
-
     const root = ReactDOM.createRoot(document.getElementById('root'));
     root.render(<App />);
   </script>
 </body>
 </html>
+
 
